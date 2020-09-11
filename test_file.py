@@ -10,8 +10,8 @@ deg2rad = math.pi / 180
 R_EARTH = 6.378136300e6  # m
 
 date = 2020.3
-latitude_degrees = deg2rad * 33
-elongitude_degrees = deg2rad * 76
+latitude_degrees = 34.567
+elongitude_degrees = 45.678
 r_norm_km = 1.05 * R_EARTH / 1000
 
 
@@ -205,13 +205,12 @@ def igrf13_5(date, latitude_degrees, elongitude_degrees, r_norm_km):
     x = x * Cd + z * sd
     z = z * Cd - one * sd
 
-    #print([x, y, z])
+    print([x, y, z])
 
 
 t1 = time.monotonic()
-for i in range(200):
+for i in range(1):
     igrf13_5(date, latitude_degrees, elongitude_degrees, r_norm_km)
 
 print(time.monotonic()-t1)
-
 
