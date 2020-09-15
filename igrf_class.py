@@ -15,14 +15,14 @@ def reset_array(input_array):
     for i in range(len(input_array)):
         input_array[i] = 0.0
 
-def igrf13_5(gh, date, latitude_degrees, elongitude_degrees, r_norm_km,cl,sl,p,q):
+def igrf13_5(gh, date, latitude_degrees, elongitude_degrees, r_norm_km):
 
 
     # reset the lists that are passed by reference
-    reset_array(cl)
-    reset_array(sl)
-    reset_array(p)
-    reset_array(q)
+    #reset_array(cl)
+    #reset_array(sl)
+    #reset_array(p)
+    #reset_array(q)
 
     # colatitude
     colat = 90 - latitude_degrees
@@ -57,6 +57,10 @@ def igrf13_5(gh, date, latitude_degrees, elongitude_degrees, r_norm_km,cl,sl,p,q
     #sl = [0.0 for _ in range(nmx)]
     #p = [0.0 for _ in range(kmx)]
     #q = [0.0 for _ in range(kmx)]
+    cl = [0.0]*nmx
+    sl = [0.0]*nmx
+    p  = [0.0]*kmx
+    q  = [0.0]*kmx
 
     r = r_norm_km
     ct = math.cos(colat * math.pi / 180)
@@ -209,15 +213,9 @@ class igrfclass:
         12.8,
         ]
 
-    def __init__(self):
-        self.cl = [0.0 for _ in range(5)]
-        self.sl = [0.0 for _ in range(5)]
-        self.p = [0.0 for _ in range(21)]
-        self.q = [0.0 for _ in range(21)]
-
     def ned_igrf(self,date, latitude_degrees, elongitude_degrees, r_norm_km):
 
-        return igrf13_5(self.gh, date, latitude_degrees, elongitude_degrees, r_norm_km,self.cl,self.sl,self.p,self.q)
+        return igrf13_5(self.gh, date, latitude_degrees, elongitude_degrees, r_norm_km)
 
 
 # let's create the class and call it once
@@ -233,3 +231,8 @@ r_norm_km = 1.05 * R_EARTH / 1000
 
 
 print(igrf.ned_igrf(date, latitude_degrees, elongitude_degrees, r_norm_km))
+
+t1 = time.monotonic()
+for i in range(2000):
+    igrf.ned_igrf(date, latitude_degrees, elongitude_degrees, r_norm_km)
+print(time.monotonic()-t1)
