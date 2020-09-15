@@ -39,15 +39,15 @@ def checkrowvec(x):
         print("this is the vector size",x.shape)
         print("this is an element type",type(x[0]))
         raise Exception("this is an array of arrays")
+
 # ----------- Earth --------------
 class Earth():
 	"""
-	class for storing all Earth-related parameters
+	class for storing all static Earth-related parameters
 	"""
 	mu = 3.986004418E5 # specific gravitational parameter
 	R = 6371.009 # radius in km
 	J2 = 1.08262668E-3 # J2 value
-	e = 0.08181919 # elliptical Earth
 
 # ----------- Dynamics --------------
 
@@ -63,7 +63,7 @@ def propagate(x,dt,Earth):
 	k3 = dt*dynamics(x+k2/2,Earth)
 	k4 = dt*dynamics(x+k3,Earth)
 
-	return x + 1/6*(k1+2*k2+2*k3+k4)
+	return x + (1/6)*(k1+2*k2+2*k3+k4)
 
 def norm(x):
     """norm of an array"""
@@ -127,50 +127,30 @@ def ECI2ECEF(r_eci,time):
     #convert by doing a rotation
     r_ecef = np.linalg.dot(Rz(theta),r_eci.transpose())
 
-    return r_ecef
+    return np.array([r_ecef[0][0], r_ecef[1][0], r_ecef[2][0]])
 
 def Rz(theta):
     # utility function to get the z rotation matrix
     # uses radians
 
     return np.array([[math.cos(theta),math.sin(theta),0],\
-        [-math.sin(theta),math.cos(theta),0],\
-        [0,0,1]])
+                    [-math.sin(theta),math.cos(theta),0],\
+                    [0,               0,              1]])
 
 
-def ECEF2ANG(r_ecef,station):
+def ECEF2ANG(r_ecef,r_station,earth):
     # takes in the ecef position and the lat long alt of station
-    # station is [lat,long]
+    # station is r_ecef
 
-    earth = Earth()
-
-    # constants
-    deg2rad = math.pi/180
-
-    # get station ECEF
-    N = earth.R / math.sqrt(1 - earth.e ** 2 * math.sin(station[0]*deg2rad) ** 2)
-    r_station = np.array(\
-    [N * np.vector.cos(station[0]*deg2rad) * np.vector.cos(station[1]*deg2rad),\
-    N * np.vector.cos(station[0]*deg2rad) * np.vector.sin(station[1]*deg2rad),\
-    N*(1-earth.e ** 2) * np.vector.sin(station[0]*deg2rad)])
-
-
-    checkcolvec(r_ecef)
-    diff = r_ecef - r_station.transpose()
+    diff = r_ecef - r_station
     diff_n = normalize(diff)
     r_station_n = normalize(r_station)
-    print(diff_n)
-    print(r_station_n)
-    print(diff_n[0])
-    print(r_station_n[0])
 
-
-    print(diff_n*r_station_n)
     ang_dot = np.numerical.sum(diff_n*r_station_n)
 
-    a = [1,2]*np.array([1,2])
 
-    ang_from_vert = math.acos(ang_dot[0])
+
+    ang_from_vert = math.acos(ang_dot)
 
     return ang_from_vert
 
@@ -197,18 +177,17 @@ class scheduler():
 		# constants
 		self.dt = 10 # seconds
 		self.horizon = 6000 # seconds
-		#self.horizon = 8640*2
-
+		self.earth = Earth()
 		# observation constraints
 		self.min_ang = 80. # deg from vertical
 
 
 	def generate(self):
 		# first we need to extrapolate forward the pos/vel
-		earth = Earth()
+		#earth = Earth()
 
 		num_steps = int(self.horizon/self.dt)
-		num_stations = self.ground_stations.shape[0]
+		num_stations = len(self.ground_stations)
 
 		# generate the act list and the flags to determine
 		# ground passes
@@ -221,14 +200,14 @@ class scheduler():
 		for i in range(num_steps):
 			#print(current_X)
 			# propagate forward a step
-			X_next = propagate(current_X,self.dt,earth)
+			X_next = propagate(current_X,self.dt,self.earth)
 			t_next = current_time + self.dt
 
 			# find the ecef position of the sat and az,el
 			r_ecef = ECI2ECEF(X_next[0:3],t_next)
 			if num_stations > 1:
 				for j in range(num_stations):
-					ang_from_vert = ECEF2ANG(r_ecef,self.ground_stations[j])
+					ang_from_vert = ECEF2ANG(r_ecef,self.ground_stations[j],self.earth)
 					if (ang_from_vert*180/math.pi) < self.min_ang and event_flags[j] == 0:
 						event_flags[j] = 1 #raise the flag
 						obs_start[j] = t_next - 1
@@ -243,7 +222,7 @@ class scheduler():
 
 			if num_stations == 1:
 				j = 0
-				ang_from_vert = ECEF2ANG(r_ecef,self.ground_stations[j])
+				ang_from_vert = ECEF2ANG(r_ecef,self.ground_stations[j],self.earth)
 				if (ang_from_vert*180/math.pi) < self.min_ang and event_flags[j] == 0:
 					event_flags[j] = 1 #raise the flag
 					obs_start[j] = t_next - 1
@@ -279,12 +258,14 @@ class activities():
 
 # ----------- Testing script --------------
 
-earth = Earth()
+#earth = Earth()
 X = np.array([6928,0,0,0,-.871817082027,7.5348948722])
 # time = seconds since launch (Dec 1, 2020) (7640 days J200)
 time = 0
 # ground station (Stanford)
-ground_stations = np.array([[37.4241,-122.166],[37.4241,-75],[-30.5595,22.9375],[90,0]])
+#ground_stations = np.array([[37.4241,-122.166],[37.4241,-75],[-30.5595,22.9375],[90,0]])
+ground_stations = [np.array([-2696.93, -4288.3, 3850.56]), np.array([1311.14, -4893.24, 3850.56]),
+                  np.array([5056.68, 2139.92, -3220.33]), np.array([0.00505484, 0.0, 6349.64])]
 sched = scheduler(X,time,ground_stations)
 sched.generate()
 print("Ground station has been set at lat=37.4241, lon=-122.166")
