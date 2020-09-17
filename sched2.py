@@ -49,6 +49,7 @@ class Earth():
 	R = 6371.009 # radius in km
 	J2 = 1.08262668E-3 # J2 value
 
+
 # ----------- Dynamics --------------
 
 def propagate(x,dt,Earth):
@@ -175,8 +176,8 @@ class scheduler():
 		self.ground_stations = ground_stations
 
 		# constants
-		self.dt = 10 # seconds
-		self.horizon = 6000 # seconds
+		self.dt = 1 # seconds
+		self.horizon = 6400 # seconds
 		self.earth = Earth()
 		# observation constraints
 		self.min_ang = 80. # deg from vertical
@@ -205,6 +206,12 @@ class scheduler():
 
 			# find the ecef position of the sat and az,el
 			r_ecef = ECI2ECEF(X_next[0:3],t_next)
+
+			# DEBUG
+			#print(norm(X_next[0:3] - np.array([6928,0,0])))
+			if i > (num_steps-10):
+				print(X_next[0:3])
+
 			if num_stations > 1:
 				for j in range(num_stations):
 					ang_from_vert = ECEF2ANG(r_ecef,self.ground_stations[j],self.earth)
