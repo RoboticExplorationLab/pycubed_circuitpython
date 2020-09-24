@@ -53,11 +53,16 @@ class Earth():
 # ----------- Dynamics --------------
 
 def propagate(x,dt,Earth):
-    # this function will utilize a 2-body + J2 dynamics model to deliver
-    # the next state using a RK4 step
-    # it requires a state of type [pos;vel] in km and km/s
+    """Vanilla RK4 for orbital propagation.
 
-    # generic rk4 method
+    Args:
+        x: step [pos;vel] (km,km/s)
+        dt: time step (s)
+        Earth: Earth class
+
+    Returns:
+        x_{t+1}: state at next time step
+    """
 
     k1 = dt*dynamics(x,Earth)
     k2 = dt*dynamics(x+k1/2,Earth)
@@ -67,24 +72,32 @@ def propagate(x,dt,Earth):
     return x + (1/6)*(k1+2*k2+2*k3+k4)
 
 def norm(x):
-    """norm of an array"""
+    """norm of an np.array"""
     return math.sqrt(np.numerical.sum(x**2))
 
 def normalize(x):
-    """normalize an array (not in place)"""
+    """normalize an np.array (not in place)"""
     return x/norm(x)
 
 
 
 def dynamics(x,Earth):
+    """FODE + J2 dynamics function
 
-    # generate the position and velocity
-    #pos = x[0:3]
-    #vel = x[3:6]
+    Args:
+        x: [rx,ry,rz,vx,vy,vz] in km, km/s
+        earth: Earth class
 
+    Returns:
+        xdot: [vx, vy, vz, ax, ay, az]
+    """
+
+    # precompute a few terms to reduce number of operations
     r = norm(x[0:3])
     Re_r_sqr = 1.5*Earth.J2*(Earth.R/r)**2
     five_z_sqr = 5*x[2]**2/(r**2)
+
+    # two body and J2 acceleration together
     accel = (-Earth.mu/(r**3))*np.array([x[0]*(1 - Re_r_sqr*(five_z_sqr - 1)),
                                          x[1]*(1 - Re_r_sqr*(five_z_sqr - 1)),
                                          x[2]*(1 - Re_r_sqr*(five_z_sqr - 3))])
@@ -115,11 +128,14 @@ def ECI2ECEF(r_eci,time):
     return np.array([r_ecef[0][0], r_ecef[1][0], r_ecef[2][0]])
 
 def Rz(theta):
-    # utility function to get the z rotation matrix
-    # uses radians
+    """Utility function to get the z rotation matrix
 
-    return np.array([[math.cos(theta),math.sin(theta),0],\
-                    [-math.sin(theta),math.cos(theta),0],\
+    Args:
+        theta: angle to rotate about z axis (radians)
+    """
+
+    return np.array([[math.cos(theta),math.sin(theta),0],
+                    [-math.sin(theta),math.cos(theta),0],
                     [0,               0,              1]])
 
 
@@ -127,19 +143,19 @@ def ECEF2ANG(r_ecef,r_station,earth):
     # takes in the ecef position and the lat long alt of station
     # station is r_ecef
 
-    diff = r_ecef - r_station
-    diff_n = normalize(diff)
-    r_station_n = normalize(r_station)
+    #diff = r_ecef - r_station
+    #diff_n = normalize(diff)
+    #r_station_n = normalize(r_station)
 
-    ang_dot = np.numerical.sum(diff_n*r_station_n)
-
-
-
-    ang_from_vert = math.acos(ang_dot)
-
-    return ang_from_vert
+    #ang_dot = np.numerical.sum(diff_n*r_station_n)
 
 
+
+    #ang_from_vert = math.acos(ang_dot)
+
+    #return ang_from_vert
+    #return math.acos(np.numerical.sum(diff_n*r_station_n))
+    return math.acos(np.numerical.sum(normalize(r_ecef - r_station)*normalize(r_station)))
 # ----------- Scheduler --------------
 
 # We need two functions
@@ -201,7 +217,7 @@ class scheduler():
                     ang_from_vert = ECEF2ANG(r_ecef,self.ground_stations[j],self.earth)
                     if (ang_from_vert*180/math.pi) < self.min_ang and event_flags[j] == 0:
                         event_flags[j] = 1 #raise the flag
-                        obs_start[j] = t_next - 1
+                        obs_start[j] = t_next - self.dt
 
                     if (ang_from_vert*180/math.pi) >= self.min_ang and event_flags[j] == 1:
                         event_flags[j] = 0 #lower the flag
@@ -216,7 +232,7 @@ class scheduler():
                 ang_from_vert = ECEF2ANG(r_ecef,self.ground_stations[j],self.earth)
                 if (ang_from_vert*180/math.pi) < self.min_ang and event_flags[j] == 0:
                     event_flags[j] = 1 #raise the flag
-                    obs_start[j] = t_next - 1
+                    obs_start[j] = t_next - self.dt
 
                 if (ang_from_vert*180/math.pi) >= self.min_ang and event_flags[j] == 1:
                     event_flags[j] = 0 #lower the flag
