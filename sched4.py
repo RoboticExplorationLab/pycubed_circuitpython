@@ -1,5 +1,6 @@
 import math
 import ulab as np
+import time
 
 '''
 MAX: need to comment up & add TODO
@@ -52,7 +53,7 @@ class Earth():
 
 # ----------- Dynamics --------------
 
-def propagate(x,dt,Earth):
+def rk4_propagate(x,dt,Earth):
     """Vanilla RK4 for orbital propagation.
 
     Args:
@@ -106,194 +107,91 @@ def dynamics(x,Earth):
 
 
 
+def ecef_from_eci(r_eci,earth_rotation_angle_offset,t_current):
+    #
+    #w_earth_pt1 = 7.29211e-5
+    #w_earth_pt2 = 5.14671e-11
 
+    a = t_current*7.29211e-5 + earth_rotation_angle_offset
+    b = t_current*5.14671e-11
+    sin_theta = math.sin(a)*math.cos(b) + math.cos(a)*math.sin(b)
+    cos_theta = math.cos(a)*math.cos(b) - math.sin(a)*math.sin(b)
 
-
-def ECI2ECEF(r_eci,time):
-    # this function takes in an ECI position and a J2000 time
-
-    #find the number of days elapsed since Dec 1 2020
-    #now determine the angle of GMST
-    # days = (time % (24 * 60 * 60))/(24 * 60 * 60)
-    #theta = (1.22719594 + 6.3003880978*days)
-    #theta = (1.17719594 + 6.3003880978*days)
-    tenday = (time % (861641)) % (86164)
-    theta = 2*math.pi*(0.195315806040317 + 1.160576283564814e-5*(tenday))
-
-    # sat state: 6 + timestamp + earth angle = 8 (32 bytes)
-
-    #convert by doing a rotation
-    r_ecef = np.linalg.dot(Rz(theta),r_eci.transpose())
-
-    return np.array([r_ecef[0][0], r_ecef[1][0], r_ecef[2][0]])
-
-def Rz(theta):
-    """Utility function to get the z rotation matrix
-
-    Args:
-        theta: angle to rotate about z axis (radians)
-    """
-
-    return np.array([[math.cos(theta),math.sin(theta),0],
-                    [-math.sin(theta),math.cos(theta),0],
-                    [0,               0,              1]])
+    return np.array([cos_theta*r_eci[0] + sin_theta*r_eci[1],
+                    -sin_theta*r_eci[0] + cos_theta*r_eci[1],
+                     r_eci[2] ])
 
 
 def ECEF2ANG(r_ecef,r_station,earth):
-    # takes in the ecef position and the lat long alt of station
-    # station is r_ecef
-
-    #diff = r_ecef - r_station
-    #diff_n = normalize(diff)
-    #r_station_n = normalize(r_station)
-
-    #ang_dot = np.numerical.sum(diff_n*r_station_n)
-
-
-
-    #ang_from_vert = math.acos(ang_dot)
-
-    #return ang_from_vert
-    #return math.acos(np.numerical.sum(diff_n*r_station_n))
+    """Returns angle from vertical (90 - abs(el))"""
     return math.acos(np.numerical.sum(normalize(r_ecef - r_station)*normalize(r_station)))
 # ----------- Scheduler --------------
 
-# We need two functions
-# 1) Find elevation compared to lat/long on Earth of
-# satellite given ECI position, time
 
-# 2) Scheduler to find when certain threshholds have been
-# passed over the horizon
+class Propagator():
 
-class scheduler():
+    def __init__(self,rv_ecef,t_epoch):
 
-    def __init__(self,X,time,ground_stations):
-        # take in the ECI pos/vel
-        # the current JD
-        # the lat, long of ground stations we want to view
-        self.X = X
-        self.time = time
-        self.ground_stations = ground_stations
+        # [r;v] in km, km/s
+        self.rv_ecef = rv_ecef
+
+        # initial time that propagator was started
+        self.t_epoch = t_epoch
+
+        # store the current time in t_current
+        #self.t_current = t_epoch
+
+        # store ecef location
+        self.r_ecef = np.zeros(3)
+
+        # store previous time propagator was called
+        #self.previous_time = t_epoch
+
 
         # constants
-        self.dt = 10 # seconds
-        self.horizon = 20*6400 # seconds
         self.earth = Earth()
-        # observation constraints
-        self.min_ang = 80. # deg from vertical
 
 
-    def generate(self):
-        # first we need to extrapolate forward the pos/vel
-        #earth = Earth()
-
-        num_steps = int(self.horizon/self.dt)
-        num_stations = len(self.ground_stations)
-
-        # generate the act list and the flags to determine
-        # ground passes
-        self.act_list = activities()
-        event_flags = [0] * num_stations
-        obs_start = [0] * num_stations
-
-        current_time = self.time
-        current_X = self.X
-        for i in range(num_steps):
-            #print(current_X)
-            # propagate forward a step
-            X_next = propagate(current_X,self.dt,self.earth)
-            t_next = current_time + self.dt
-
-            # find the ecef position of the sat and az,el
-            r_ecef = ECI2ECEF(X_next[0:3],t_next)
-
-            # DEBUG
-            #print(norm(X_next[0:3] - np.array([6928,0,0])))
-            if i > (num_steps-10):
-                print(X_next[0:3])
-
-            if num_stations > 1:
-                for j in range(num_stations):
-                    ang_from_vert = ECEF2ANG(r_ecef,self.ground_stations[j],self.earth)
-                    if (ang_from_vert*180/math.pi) < self.min_ang and event_flags[j] == 0:
-                        event_flags[j] = 1 #raise the flag
-                        obs_start[j] = t_next - self.dt
-
-                    if (ang_from_vert*180/math.pi) >= self.min_ang and event_flags[j] == 1:
-                        event_flags[j] = 0 #lower the flag
-
-                        # create the activity
-                        center = obs_start[j] + (t_next - 1 - obs_start[j]) / 2
-                        window = (t_next - 1 - obs_start[j]) / 2
-                        self.act_list.add_activity(center,window,j)
-
-            if num_stations == 1:
-                j = 0
-                ang_from_vert = ECEF2ANG(r_ecef,self.ground_stations[j],self.earth)
-                if (ang_from_vert*180/math.pi) < self.min_ang and event_flags[j] == 0:
-                    event_flags[j] = 1 #raise the flag
-                    obs_start[j] = t_next - self.dt
-
-                if (ang_from_vert*180/math.pi) >= self.min_ang and event_flags[j] == 1:
-                    event_flags[j] = 0 #lower the flag
-
-                    # create the activity
-                    center = obs_start[j] + (t_next - 1 - obs_start[j]) / 2
-                    window = (t_next - 1 - obs_start[j]) / 2
-                    self.act_list.add_activity(center,window,j)
-
-            # reassign variables
-            current_X = 1*X_next
-            current_time = 1*t_next
+    def step_in_place(self,dt):
 
 
-class activities():
+        if float(dt) > 20.0:
+            raise Exception("dt is too big (>20 seconds)")
 
-    def __init__(self):
-        self.act_num = 0
-        self.centers = []
-        self.windows = []
-        self.gs_numbers = []
+        # set new time to old time
+        #self.previous_time = self.current_time
 
-    def add_activity(self,center,window,gs_number):
-        self.act_num += 1
-        self.centers.append(center) #J2000 days
-        self.windows.append(window) #days
-        self.gs_numbers.append(gs_number)
+        # send dynamics forward one s
+        self.rv_ecef = rk4_propagate(self.rv_ecef,dt,self.earth)
 
+        # reset timing
+        #self.t_current += dt
 
 
 # ----------- Testing script --------------
 
 #earth = Earth()
-X = np.array([6928,0,0,0,-.871817082027,7.5348948722])
-# time = seconds since launch (Dec 1, 2020) (7640 days J200)
-time = 0
-# ground station (Stanford)
-#ground_stations = np.array([[37.4241,-122.166],[37.4241,-75],[-30.5595,22.9375],[90,0]])
-ground_stations = [np.array([-2696.93, -4288.3, 3850.56]), np.array([1311.14, -4893.24, 3850.56]),
-                  np.array([5056.68, 2139.92, -3220.33]), np.array([0.00505484, 0.0, 6349.64])]
-sched = scheduler(X,time,ground_stations)
-sched.generate()
-print("Ground station has been set at lat=37.4241, lon=-122.166")
-for i in range(len(sched.act_list.centers)):
-    print(sched.act_list.centers[i])
-    # print("Access: {} | Center: {} | Duration: {}".format(i,\
-    #   sched.act_list.centers[i],sched.act_list.windows[i]*2))
-    start_time = sched.act_list.centers[i]- sched.act_list.windows[i]
-    stop_time = sched.act_list.centers[i]+ sched.act_list.windows[i]
+rv_ecef = np.array([-4577.35003,-5196.57233,-0.002286203,
+              -0.733516100,0.67309941644,7.51530773])
 
-    start_day = start_time // 86400
-    start_hour = (start_time % 86400) // 3600
-    start_min = int((start_time / 3600 - start_hour - (start_day * 24)) // (1/60))
-    start_sec = start_time - start_min * 60 - start_hour * 3600 - start_day * 86400
+# initialize propagator
 
-    stop_day = stop_time // 86400
-    stop_hour = (stop_time % 86400) // 3600
-    stop_min = int((stop_time / 3600 - stop_hour - (stop_day * 24)) // (1/60))
-    stop_sec = stop_time - stop_min * 60 - stop_hour * 3600 - stop_day * 86400
+earth_rotation_angle_offset = 3.7794796
+t_0 = 3622269
+propagator = Propagator(rv_ecef,t_0)
 
-    print("Access: {} | GS: {} | Start Time: Dec {}, {}:{}:{} | Stop Time: Dec {}, {}:{}:{}".format(i,\
-        sched.act_list.gs_numbers[i],\
-        1+start_day,start_hour,start_min,start_sec\
-        ,1+stop_day,stop_hour,stop_min,stop_sec))
+dt = 10.0
+
+t1 = time.monotonic()
+for i in range(2000):
+    propagator.r_ecef = ecef_from_eci(propagator.rv_ecef,earth_rotation_angle_offset,dt*i)
+    propagator.step_in_place(dt)
+
+print(time.monotonic() - t1)
+
+print(propagator.rv_ecef)
+print(propagator.r_ecef)
+#print(propagator.t_current)
+
+
+#print(ecef_from_eci(X,earth_rotation_angle_offset,123456))
