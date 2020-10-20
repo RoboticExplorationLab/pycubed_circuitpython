@@ -108,15 +108,34 @@ def dynamics(x,Earth):
 
 
 def ecef_from_eci(r_eci,earth_rotation_angle_offset,t_current):
-    #
-    #w_earth_pt1 = 7.29211e-5
-    #w_earth_pt2 = 5.14671e-11
+    """ecef position from eci and earth rotation angle.
 
+    Args:
+        r_eci: sc position in ECI (km)
+        earth_rotation_angle_offset: angle of earth at time of epoch (rad)
+        t_current: time since epoch (s)
+
+    Returns:
+        r_ecef: sc position in ECEF (km)
+
+    Comments:
+        The math is the following:
+            r_ecef = RotZ(GMST)*r_eci
+        where
+            GMST = earth_rotation_angle_offset + t_current*w_earth
+
+        I split up GMST into two components for better accuracy
+    """
+
+    # gmst angle = a + b
     a = t_current*7.29211e-5 + earth_rotation_angle_offset
     b = t_current*5.14671e-11
+
+    # here I get sin and cosine of GMST
     sin_theta = math.sin(a)*math.cos(b) + math.cos(a)*math.sin(b)
     cos_theta = math.cos(a)*math.cos(b) - math.sin(a)*math.sin(b)
 
+    # instead of calling a RotZ function, I just do it all here
     return np.array([cos_theta*r_eci[0] + sin_theta*r_eci[1],
                     -sin_theta*r_eci[0] + cos_theta*r_eci[1],
                      r_eci[2] ])
@@ -130,68 +149,64 @@ def ECEF2ANG(r_ecef,r_station,earth):
 
 class Propagator():
 
-    def __init__(self,rv_ecef,t_epoch):
+    def __init__(self,rv_eci,earth_rotation_angle_offset,t_epoch):
 
         # [r;v] in km, km/s
-        self.rv_ecef = rv_ecef
+        self.rv_eci = 1*rv_eci
+
+        # current earth rotation angl
+        self.earth_rotation_angle_offset = earth_rotation_angle_offset
 
         # initial time that propagator was started
         self.t_epoch = t_epoch
 
-        # store the current time in t_current
-        #self.t_current = t_epoch
-
         # store ecef location
         self.r_ecef = np.zeros(3)
-
-        # store previous time propagator was called
-        #self.previous_time = t_epoch
-
 
         # constants
         self.earth = Earth()
 
 
-    def step_in_place(self,dt):
-
+    def step(self,dt):
 
         if float(dt) > 20.0:
             raise Exception("dt is too big (>20 seconds)")
 
-        # set new time to old time
-        #self.previous_time = self.current_time
-
         # send dynamics forward one s
-        self.rv_ecef = rk4_propagate(self.rv_ecef,dt,self.earth)
+        self.rv_eci = rk4_propagate(self.rv_eci,dt,self.earth)
 
-        # reset timing
-        #self.t_current += dt
+    def get_r_ecef(self,t_current):
+        self.r_ecef = ecef_from_eci(self.rv_eci,
+        self.earth_rotation_angle_offset,t_current - self.t_epoch)
 
 
-# ----------- Testing script --------------
+# ---------------------- Testing script --------------------------
 
-#earth = Earth()
-rv_ecef = np.array([-4577.35003,-5196.57233,-0.002286203,
-              -0.733516100,0.67309941644,7.51530773])
 
-# initialize propagator
+#----------Communication from the ground-------------------
+# communication from the ground tells us rv_eci, and earth_rotation_angle_offset
+rv_eci = np.array([-1861.7015559490976, -6645.09702340011, 0.032941584155793194,
+              -0.9555092604431692, 0.29391099680436356, 7.541418280028347])
+earth_rotation_angle_offset = 4.273677081313352
 
-earth_rotation_angle_offset = 3.7794796
-t_0 = 3622269
-propagator = Propagator(rv_ecef,t_0)
 
-dt = 10.0
+#----------Initialize propagator---------------------------
+# the spacecraft then initializes the propagator with this information, and
+# takes note of the current time as t_epoch
+t_epoch = 0 # hard coded now, but would me current on board time
+propagator = Propagator(rv_eci, earth_rotation_angle_offset, t_epoch)
 
+# step size for integrator
+dt = 10
+
+
+#----------Run propagator----------------------------------
 t1 = time.monotonic()
 for i in range(2000):
-    propagator.r_ecef = ecef_from_eci(propagator.rv_ecef,earth_rotation_angle_offset,dt*i)
-    propagator.step_in_place(dt)
+    propagator.get_r_ecef(dt*i)
+    propagator.step(dt)
 
 print(time.monotonic() - t1)
 
-print(propagator.rv_ecef)
+print(propagator.rv_eci)
 print(propagator.r_ecef)
-#print(propagator.t_current)
-
-
-#print(ecef_from_eci(X,earth_rotation_angle_offset,123456))
