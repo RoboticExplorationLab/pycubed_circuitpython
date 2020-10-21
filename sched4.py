@@ -142,14 +142,32 @@ def ecef_from_eci(r_eci,earth_rotation_angle_offset,t_current):
 
 
 def ECEF2ANG(r_ecef,r_station,earth):
-    """Returns angle from vertical (90 - abs(el))"""
+    """Returns angle from vertical (pi/2 - abs(el))
+
+    Args:
+        r_ecef: spacecraft position in ecef (km)
+        r_station: ground station position in ecef (km)
+        earth: Earth class
+
+    Returns:
+        Angle from vertical in radians (pi/2 - abs(el))
+    """
+
     return math.acos(np.numerical.sum(normalize(r_ecef - r_station)*normalize(r_station)))
 # ----------- Scheduler --------------
 
 
 class Propagator():
 
-    def __init__(self,rv_eci,earth_rotation_angle_offset,t_epoch):
+    def __init__(self,rv_eci,earth_rotation_angle_offset,t_epoch,ground_stations):
+        """Initialize the propagator with the stuff we received from
+        the ground station, as well as pre-allocate other parameters.
+
+        Args:
+            rv_eci: state [r (km);v (km/s)] at t_epoch
+            earth_rotation_angle_offset: GMST at t_epoch (radian)
+            t_epoch: on board satellite time when propagator is initialized (s)
+        """
 
         # [r;v] in km, km/s
         self.rv_eci = 1*rv_eci
@@ -166,8 +184,26 @@ class Propagator():
         # constants
         self.earth = Earth()
 
+        # visible to ground station
+        self.visible = False
+
+        # visible to ground station (previous step)
+        self.old_visible = False
+
+        # ground stations
+        self.ground_stations = ground_stations
+
 
     def step(self,dt):
+        """Take a step in the propagator.
+
+        Args:
+            dt: time step (s) must be greater than 20
+
+        Summary:
+            This function integrates the orbital position and velocity
+            with respect to a J2-only gravity model
+        """
 
         if float(dt) > 20.0:
             raise Exception("dt is too big (>20 seconds)")
@@ -175,10 +211,27 @@ class Propagator():
         # send dynamics forward one s
         self.rv_eci = rk4_propagate(self.rv_eci,dt,self.earth)
 
+
     def get_r_ecef(self,t_current):
+        """Get ecef location of spacecraft.
+
+        Args:
+            t_current: on-board spacecraft time (s)
+        """
+
         self.r_ecef = ecef_from_eci(self.rv_eci,
         self.earth_rotation_angle_offset,t_current - self.t_epoch)
 
+
+    def check_visibility(self):
+
+        # put the current reading back in the old reading
+        self.old_visible = self.visible
+
+        # find new reading
+        for gs in self.ground_stations:
+            if ECEF2ANG(self.r_ecef,gs,self.earth) >  math.cos(math.pi/2):
+                self.visible = True
 
 # ---------------------- Testing script --------------------------
 
@@ -194,19 +247,49 @@ earth_rotation_angle_offset = 4.273677081313352
 # the spacecraft then initializes the propagator with this information, and
 # takes note of the current time as t_epoch
 t_epoch = 0 # hard coded now, but would me current on board time
-propagator = Propagator(rv_eci, earth_rotation_angle_offset, t_epoch)
+
+# ground station locations
+stanford_ecef = np.array([-2.7001052e3, -4.29272716e3, 3.855177275e3])
+ground_stations = [stanford_ecef]
+propagator = Propagator(rv_eci, earth_rotation_angle_offset, t_epoch, ground_stations)
 
 # step size for integrator
 dt = 10
 
 
 #----------Run propagator----------------------------------
+
+stanford_ecef = np.array([-2.7001052e3, -4.29272716e3, 3.855177275e3])
+ground_stations = [stanford_ecef]
+
+passes = []
+n_passes = 0
+
+
 t1 = time.monotonic()
-for i in range(2000):
-    propagator.get_r_ecef(dt*i)
+for i in range(20):
+    t = dt*i
+    propagator.get_r_ecef(t)
     propagator.step(dt)
+    propagator.check_visibility()
+
+
+    #print(ECEF2ANG(propagator.r_ecef,ground_stations[0],propagator.earth))
+
+    if (not propagator.old_visible) and propagator.visible:
+        #print(propagator.visible)
+        passes.append([t,0])
+        n_passes += 1
+
+    if propagator.old_visible and (not propagator.visible):
+        print("yur")
+        passes[n_passes-1][1] = t
+
 
 print(time.monotonic() - t1)
 
 print(propagator.rv_eci)
 print(propagator.r_ecef)
+
+print(passes)
+print(n_passes)
