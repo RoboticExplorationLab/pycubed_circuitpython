@@ -1,1 +1,5 @@
+# either macOS or the circuit python board insists on adding these
 ._*
+.fseventsd/
+.Trashes
+.metadata_never_index
