@@ -2,6 +2,9 @@ import math
 import ulab as np
 import time
 
+import gc
+
+print(gc.mem_alloc())
 '''
 MAX: need to comment up & add TODO
 '''
@@ -123,7 +126,7 @@ def ecef_from_eci(r_eci,earth_rotation_angle_offset,t_since_epoch):
         The math is the following:
             r_ecef = RotZ(GMST)*r_eci
         where
-            GMST = earth_rotation_angle_offset + t_current*w_earth
+            GMST = earth_rotation_angle_offset + t_since_epoch*w_earth
 
         I split up GMST into two components for better accuracy
     """
@@ -143,7 +146,9 @@ def ecef_from_eci(r_eci,earth_rotation_angle_offset,t_since_epoch):
 
 
 def ECEF2ANG(r_ecef,r_station,earth):
-    """Returns angle from vertical (pi/2 - abs(el))
+    """Returns dot product of the following two position vectors:
+        (1) normalized vector from center of earth to ground station
+        (2) normalized vector from ground station to satellite
 
     Args:
         r_ecef: spacecraft position in ecef (km)
@@ -151,10 +156,11 @@ def ECEF2ANG(r_ecef,r_station,earth):
         earth: Earth class
 
     Returns:
-        Angle from vertical in radians (pi/2 - abs(el))
+        dot product of these two vectors
     """
 
     return (np.numerical.sum(normalize(r_ecef - r_station)*normalize(r_station)))
+
 # ----------- Scheduler --------------
 
 
@@ -261,20 +267,18 @@ ground_stations = [stanford_ecef]
 propagator = Propagator(rv_eci, earth_rotation_angle_offset, t_epoch, ground_stations)
 
 # step size for integrator
-dt = 10
+dt = 20
 
 
 #----------Run propagator----------------------------------
 
-stanford_ecef = np.array([-2.7001052e3, -4.29272716e3, 3.855177275e3])
-ground_stations = [stanford_ecef]
-
+# empty list (to be list of 2 element lists with start and stop times)
 passes = []
 n_passes = 0
 
 
-
-for i in range(3000):
+t1 = time.monotonic()
+for i in range(17000):
 
     # current time
     t_current = dt*i + t_epoch
@@ -300,10 +304,13 @@ for i in range(3000):
         # if we just left visibility, add the stop time
         passes[n_passes-1][1] = t_current
 
-
-
+print("time")
+print(time.monotonic()-t1)
 #print(propagator.rv_eci)
 #print(propagator.r_ecef)
 
 print(passes)
 print(n_passes)
+
+gc.collect()
+print(gc.mem_alloc())
