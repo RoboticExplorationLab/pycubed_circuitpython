@@ -217,9 +217,9 @@ class Propagator():
             This function integrates the orbital position and velocity
             with respect to a J2-only gravity model
         """
-        print(dt)
+
         if float(dt) > 50.0:
-            raise Exception("dt is too big (>20 seconds)")
+            raise Exception("dt is too big (>50 seconds)")
 
         # send dynamics forward one s
         self.rv_eci = rk4_propagate(self.rv_eci,dt,self.earth)
