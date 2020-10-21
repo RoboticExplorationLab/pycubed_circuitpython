@@ -72,6 +72,7 @@ def rk4_propagate(x,dt,Earth):
 
     return x + (1/6)*(k1+2*k2+2*k3+k4)
 
+
 def norm(x):
     """norm of an np.array"""
     return math.sqrt(np.numerical.sum(x**2))
@@ -107,13 +108,13 @@ def dynamics(x,Earth):
 
 
 
-def ecef_from_eci(r_eci,earth_rotation_angle_offset,t_current):
+def ecef_from_eci(r_eci,earth_rotation_angle_offset,t_since_epoch):
     """ecef position from eci and earth rotation angle.
 
     Args:
         r_eci: sc position in ECI (km)
         earth_rotation_angle_offset: angle of earth at time of epoch (rad)
-        t_current: time since epoch (s)
+        t_since_epoch: time since epoch (s)
 
     Returns:
         r_ecef: sc position in ECEF (km)
@@ -128,8 +129,8 @@ def ecef_from_eci(r_eci,earth_rotation_angle_offset,t_current):
     """
 
     # gmst angle = a + b
-    a = t_current*7.29211e-5 + earth_rotation_angle_offset
-    b = t_current*5.14671e-11
+    a = t_since_epoch*7.29211e-5 + earth_rotation_angle_offset
+    b = t_since_epoch*5.14671e-11
 
     # here I get sin and cosine of GMST
     sin_theta = math.sin(a)*math.cos(b) + math.cos(a)*math.sin(b)
@@ -153,7 +154,7 @@ def ECEF2ANG(r_ecef,r_station,earth):
         Angle from vertical in radians (pi/2 - abs(el))
     """
 
-    return math.acos(np.numerical.sum(normalize(r_ecef - r_station)*normalize(r_station)))
+    return (np.numerical.sum(normalize(r_ecef - r_station)*normalize(r_station)))
 # ----------- Scheduler --------------
 
 
@@ -224,13 +225,19 @@ class Propagator():
 
 
     def check_visibility(self):
+        """Check if the spacecraft is visible from a ground station.
 
+        Summary: sets self.visible to False, then cycles through the
+        ground stations and if one of them is visible, sets self.visible
+        to True.
+        """
         # put the current reading back in the old reading
         self.old_visible = self.visible
 
         # find new reading
+        self.visible = False
         for gs in self.ground_stations:
-            if ECEF2ANG(self.r_ecef,gs,self.earth) >  math.cos(math.pi/2):
+            if (ECEF2ANG(self.r_ecef,gs,self.earth) >  0.0):
                 self.visible = True
 
 # ---------------------- Testing script --------------------------
@@ -246,7 +253,7 @@ earth_rotation_angle_offset = 4.273677081313352
 #----------Initialize propagator---------------------------
 # the spacecraft then initializes the propagator with this information, and
 # takes note of the current time as t_epoch
-t_epoch = 0 # hard coded now, but would me current on board time
+t_epoch = 0 # hard coded now, but would be current on board time
 
 # ground station locations
 stanford_ecef = np.array([-2.7001052e3, -4.29272716e3, 3.855177275e3])
@@ -266,30 +273,37 @@ passes = []
 n_passes = 0
 
 
-t1 = time.monotonic()
-for i in range(20):
-    t = dt*i
-    propagator.get_r_ecef(t)
-    propagator.step(dt)
+
+for i in range(3000):
+
+    # current time
+    t_current = dt*i + t_epoch
+
+    # get ecef location
+    propagator.get_r_ecef(t_current)
+
+    # check visibility from ground station
     propagator.check_visibility()
 
-
-    #print(ECEF2ANG(propagator.r_ecef,ground_stations[0],propagator.earth))
+    # integrate to the next step
+    propagator.step(dt)
 
     if (not propagator.old_visible) and propagator.visible:
-        #print(propagator.visible)
-        passes.append([t,0])
+        # if we just entered visibility, add the start time
+        passes.append([t_current,0])
+
+        # increment the number of passes by 1
         n_passes += 1
 
+
     if propagator.old_visible and (not propagator.visible):
-        print("yur")
-        passes[n_passes-1][1] = t
+        # if we just left visibility, add the stop time
+        passes[n_passes-1][1] = t_current
 
 
-print(time.monotonic() - t1)
 
-print(propagator.rv_eci)
-print(propagator.r_ecef)
+#print(propagator.rv_eci)
+#print(propagator.r_ecef)
 
 print(passes)
 print(n_passes)
