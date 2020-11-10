@@ -267,7 +267,7 @@ earth_rotation_angle_offset = 4.273677081313352
 # the spacecraft then initializes the propagator with this information, and
 # takes note of the current time as t_epoch
 t_epoch = 0 # hard coded now, but would be current on board time at time of transmission
-
+t_epoch = 6856.05
 # ground station locations
 stanford_ecef = np.array([-2.7001052e3, -4.29272716e3, 3.855177275e3])
 ground_stations = [stanford_ecef]
