@@ -54,6 +54,10 @@ def earth_rotation_angle_gps(MJD_int,MJD_float):
 
     Returns:
         Era: Earth rotational angle (radians)
+        
+    Comments:
+        Information on the ERA from MJD can be found here:
+        <https://www.aanda.org/articles/aa/pdf/2006/45/aa5897-06.pdf>
     """
 
     # get earth rotation angle at epoch
