@@ -73,20 +73,6 @@ def earth_rotation_angle_gps(MJD_int,MJD_float):
 
     return Era
 
-def ecef_from_eci_dcm(era):
-    """ecef_Q_eci DCM from earth rotation angle.
-
-    Args:
-        era: earth rotation angle, radians
-
-    Returns:
-        ecef_Q_eci DCM
-    """
-
-    return np.array([ [math.cos(era),  math.sin(era), 0],
-                      [-math.sin(era),  math.cos(era), 0],
-                      [0,       0,      1]])
-
 def rveci_from_ecef(r_ecef,v_ecef,era):
     """Get rv in eci from ecef and earth rotation angle.
 
