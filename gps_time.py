@@ -36,10 +36,10 @@ def mjd_from_gps(GNSS_week, TOW):
     GNSS_days_float = TOW/86400
 
     # get current MJD int component
-    MJD_int = MJD_gps_epoch + GNSS_days_int
+    MJD_int = MJD_gps_epoch + GNSS_days_int + math.floor(GNSS_days_float)
 
     # current mjd float component
-    MJD_float = GNSS_days_float
+    MJD_float = GNSS_days_float % 1
 
     # return the parts to MJD
     return MJD_int, MJD_float
@@ -97,12 +97,13 @@ def earth_rotation_angle_gps(MJD_int,MJD_float):
     delta_mjd_int = MJD_int - mjd_0
     delta_mjd_float = MJD_float
 
-    w_earth_rad_per_day_p1 = 6.30038
-    w_earth_rad_per_day_p2 = .7486754831e-5
+    Era = era_0 + 2*math.pi*delta_mjd_int*0.0027378119 + delta_mjd_float*6.300387
+    #w_earth_rad_per_day_p1 = 6.30038z
+    #w_earth_rad_per_day_p2 = .7486754831e-5
 
-    a = delta_mjd_int*w_earth_rad_per_day_p1 % (2*math.pi) + delta_mjd_int*w_earth_rad_per_day_p2 % (2*math.pi)
-    b = delta_mjd_float*w_earth_rad_per_day_p1 % (2*math.pi) + delta_mjd_float*w_earth_rad_per_day_p2 % (2*math.pi) + era_0
+    #a = delta_mjd_int*w_earth_rad_per_day_p1 % (2*math.pi) + delta_mjd_int*w_earth_rad_per_day_p2 % (2*math.pi)
+    #b = delta_mjd_float*w_earth_rad_per_day_p1 % (2*math.pi) + delta_mjd_float*w_earth_rad_per_day_p2 % (2*math.pi) + era_0
 
-    return (a+b) % (2*math.pi)
+    return Era
 
 eci_from_ecef_gps(MJD_int,MJD_float,np.array([1,2,3.0]))
