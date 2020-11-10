@@ -45,65 +45,120 @@ def mjd_from_gps(GNSS_week, TOW):
     return MJD_int, MJD_float
 
 
-# here is data from something Max sent on september 11th
+def earth_rotation_angle_gps(MJD_int,MJD_float):
+    """Earth rotation angle from gps data.
 
+    Args:
+        MJD_int: integer of MJD (floor(MJD))
+        MJD_float: fractional part of MJD (MJD - floor(MJD))
+
+    Returns:
+        Era: Earth rotational angle (radians)
+    """
+
+    # get earth rotation angle at epoch
+    era_0 = 1.7557955403696752
+    mjd_0 = 59215
+
+    # find the delta MJD since the epoch. This is divided into an int and a float
+    delta_mjd_int = MJD_int - mjd_0
+    delta_mjd_float = MJD_float
+
+    # (era_0 offset) + (2pi*revolutions since epoch) + (float * radians_p_day)
+    Era = era_0 + 2*math.pi*delta_mjd_int*0.0027378119 + delta_mjd_float*6.300387
+
+    return Era
+
+def ecef_from_eci_dcm(era):
+    """ecef_Q_eci DCM from earth rotation angle.
+
+    Args:
+        era: earth rotation angle, radians
+
+    Returns:
+        ecef_Q_eci DCM
+    """
+
+    return np.array([ [math.cos(era),  math.sin(era), 0],
+                      [-math.sin(era),  math.cos(era), 0],
+                      [0,       0,      1]])
+
+def rveci_from_ecef(r_ecef,v_ecef,era):
+    """Get rv in eci from ecef and earth rotation angle.
+
+    Args:
+        r_ecef: position in ecef (km)
+        v_ecef: velocity in ecef wrt ecef (km/s)
+        era: earth rotation angle (radians)
+
+    Returns:
+        r_eci: position in eci (km)
+        v_eci: velocity in eci wrt eci (km/s)
+    """
+
+    sin_theta = math.sin(era)
+    cos_theta = math.cos(era)
+
+    r_eci = np.array([cos_theta*r_ecef[0] - sin_theta*r_ecef[1],
+                      sin_theta*r_ecef[0] + cos_theta*r_ecef[1],
+                      r_ecef[2] ])
+
+    omega_earth = 7.292115146706979e-5
+    v_eci = np.array([cos_theta*v_ecef[0] - sin_theta*v_ecef[1] + omega_earth*r_eci[1],
+                      sin_theta*v_ecef[0] + cos_theta*v_ecef[1] - omega_earth*r_eci[0],
+                      v_ecef[2] ])
+
+    return r_eci, v_eci
+
+
+# ----------------RAW GPS INFO--------------------
 # weeks from midnight january 6th 1980
 GNSS_week = 2131
 
 # seconds since the week started (raw gps int)
-TOW = 16028200
+TOW = 19047200
 
-MJD_int, MJD_float = mjd_from_gps(GNSS_week, TOW)
+# ecef position and velocity
+r_ecef = (-7384816,-655378593, 149326468)
+v_ecef = (778310,43607,249507)
+#-------------------------------------------------
 
-print(MJD_int)
-print(MJD_float)
+def propagatorinfo_from_gps(GNSS_week, TOW, r_ecef, v_ecef):
+    """Get propagator starting info from GPS data.
 
-def eci_from_ecef_gps(MJD_int,MJD_float,vector_eci):
+    Args:
+        GNSS_week: Weeks since january 6th 1980
+        TOW: Seconds into current week
+        r_ecef: ecef position (.01 meters)
+        v_cef: ecef velocity wrt ecef (0.01 m/s)
 
-    # get earth rotation angle
-    era_0 = 1.7557955403696752
-    mjd_0 = 59215
+    Returns:
+        era: Earth rotation angle (radians)
+        r_eci: position in eci (km)
+        v_eci: velocity in eci wrt eci (km/s)
 
-    delta_mjd_int = MJD_int - mjd_0
-    delta_mjd_float = MJD_float
+    Comments:
+        Inputs are raw GPS data, no pre-scaling needed.
+    """
 
-    w_earth_rad_per_day_p1 = 6.30038
-    w_earth_rad_per_day_p2 = .7486754831e-5
+    # get MJD from gps time info
+    MJD_int, MJD_float = mjd_from_gps(GNSS_week, TOW)
 
-    a = delta_mjd_int*w_earth_rad_per_day_p1 % (2*math.pi) + delta_mjd_int*w_earth_rad_per_day_p2 % (2*math.pi)
-    b = delta_mjd_float*w_earth_rad_per_day_p1 % (2*math.pi) + delta_mjd_float*w_earth_rad_per_day_p2 % (2*math.pi) + era_0
+    # compute earth rotation angle from the MJD
+    era = earth_rotation_angle_gps(MJD_int,MJD_float)
 
-    # here I get sin and cosine of GMST
-    sin_theta = math.sin(a)*math.cos(b) + math.cos(a)*math.sin(b)
-    cos_theta = math.cos(a)*math.cos(b) - math.sin(a)*math.sin(b)
+    # scale position and velocity
+    r_ecef = np.array([r_ecef[0],r_ecef[1],r_ecef[2]])/100000
+    v_ecef = np.array([v_ecef[0],v_ecef[1],v_ecef[2]])/100000
 
-    print(sin_theta)
-    print(cos_theta)
+    # convert to inertial position and velocity
+    r_eci, v_eci = rveci_from_ecef(r_ecef,v_ecef,era)
 
-    print(a+b)
-    print(math.sin(a+b))
-    print(math.cos(a+b))
-
-    return np.array([cos_theta*vector_eci[0] - sin_theta*vector_eci[1],
-                     sin_theta*vector_eci[0] + cos_theta*vector_eci[1],
-                     vector_eci[2] ])
-
-def earth_rotation_angle_gps(MJD_int,MJD_float):
-
-    # get earth rotation angle
-    era_0 = 1.7557955403696752
-    mjd_0 = 59215
-
-    delta_mjd_int = MJD_int - mjd_0
-    delta_mjd_float = MJD_float
-
-    Era = era_0 + 2*math.pi*delta_mjd_int*0.0027378119 + delta_mjd_float*6.300387
-    #w_earth_rad_per_day_p1 = 6.30038z
-    #w_earth_rad_per_day_p2 = .7486754831e-5
-
-    #a = delta_mjd_int*w_earth_rad_per_day_p1 % (2*math.pi) + delta_mjd_int*w_earth_rad_per_day_p2 % (2*math.pi)
-    #b = delta_mjd_float*w_earth_rad_per_day_p1 % (2*math.pi) + delta_mjd_float*w_earth_rad_per_day_p2 % (2*math.pi) + era_0
-
-    return Era
-
-eci_from_ecef_gps(MJD_int,MJD_float,np.array([1,2,3.0]))
+    # debugging printouts
+    print('MJD int',MJD_int)
+    print('MJD float', MJD_float)
+    print('Earth Rotation Angle',era)
+    print('r_ecef',r_ecef)
+    print('v_ecef',v_ecef)
+    print('r_eci',r_eci)
+    print('v_eci',v_eci)
