@@ -104,8 +104,8 @@ def rveci_from_ecef(r_ecef,v_ecef,era):
                       r_ecef[2] ])
 
     omega_earth = 7.292115146706979e-5
-    v_eci = np.array([cos_theta*v_ecef[0] - sin_theta*v_ecef[1] + omega_earth*r_eci[1],
-                      sin_theta*v_ecef[0] + cos_theta*v_ecef[1] - omega_earth*r_eci[0],
+    v_eci = np.array([cos_theta*v_ecef[0] - sin_theta*v_ecef[1] - omega_earth*r_eci[1],
+                      sin_theta*v_ecef[0] + cos_theta*v_ecef[1] + omega_earth*r_eci[0],
                       v_ecef[2] ])
 
     return r_eci, v_eci
@@ -120,7 +120,7 @@ TOW = 19047200
 
 # ecef position and velocity
 r_ecef = (-7384816,-655378593, 149326468)
-v_ecef = (778310,43607,249507)
+v_ecef = (682728,44684,249507)
 #-------------------------------------------------
 
 def propagatorinfo_from_gps(GNSS_week, TOW, r_ecef, v_ecef):
@@ -162,3 +162,9 @@ def propagatorinfo_from_gps(GNSS_week, TOW, r_ecef, v_ecef):
     print('v_ecef',v_ecef)
     print('r_eci',r_eci)
     print('v_eci',v_eci)
+
+    return era, r_eci, v_eci
+
+
+
+propagatorinfo_from_gps(GNSS_week, TOW, r_ecef, v_ecef)
