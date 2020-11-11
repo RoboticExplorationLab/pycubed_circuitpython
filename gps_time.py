@@ -54,6 +54,10 @@ def earth_rotation_angle_gps(MJD_int,MJD_float):
 
     Returns:
         Era: Earth rotational angle (radians)
+        
+    Comments:
+        Information on the ERA from MJD can be found here:
+        <https://www.aanda.org/articles/aa/pdf/2006/45/aa5897-06.pdf>
     """
 
     # get earth rotation angle at epoch
@@ -68,20 +72,6 @@ def earth_rotation_angle_gps(MJD_int,MJD_float):
     Era = era_0 + 2*math.pi*delta_mjd_int*0.0027378119 + delta_mjd_float*6.300387
 
     return Era
-
-def ecef_from_eci_dcm(era):
-    """ecef_Q_eci DCM from earth rotation angle.
-
-    Args:
-        era: earth rotation angle, radians
-
-    Returns:
-        ecef_Q_eci DCM
-    """
-
-    return np.array([ [math.cos(era),  math.sin(era), 0],
-                      [-math.sin(era),  math.cos(era), 0],
-                      [0,       0,      1]])
 
 def rveci_from_ecef(r_ecef,v_ecef,era):
     """Get rv in eci from ecef and earth rotation angle.
