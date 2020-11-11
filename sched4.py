@@ -1,50 +1,15 @@
-import math
+from math import sqrt,sin,cos
 import ulab as np
-import time
+from time import monotonic
+import struct
 
-import gc
 
-print(gc.mem_alloc())
 '''
-MAX: need to comment up & add TODO
+    --------- OG RESULTS -----------
+time: 8.25
+[[23490, 23730], [28860, 29550], [34620, 35130], [70680, 71130], [76230, 76950], [82020, 82410]]
+
 '''
-
-#----------DEBUGGING FUNCTIONS----
-def checkcolvec(x):
-    a,b = x.shape
-
-    if b != 1:
-        print("this is the problem vector",x)
-        print("this is the vector type",type(x))
-        print("this is the vector size",x.shape)
-        print("this is an element type",type(x[0]))
-        raise Exception("Not a column vector")
-
-    if not isinstance(x[0],float):
-        print("this is the problem vector",x)
-        print("this is the vector type",type(x))
-        print("this is the vector size",x.shape)
-        print("this is an element type",type(x[0]))
-        raise Exception("this is an array of arrays")
-
-def checkrowvec(x):
-
-    a,b = x.shape
-
-    if a != 1:
-        print("this is the problem vector",x)
-        print("this is the vector type",type(x))
-        print("this is the vector size",x.shape)
-        print("this is an element type",type(x[0]))
-        raise Exception("Not a column vector")
-
-    if not isinstance(x[0],float):
-        print("this is the problem vector",x)
-        print("this is the vector type",type(x))
-        print("this is the vector size",x.shape)
-        print("this is an element type",type(x[0]))
-        raise Exception("this is an array of arrays")
-
 # ----------- Earth --------------
 class Earth():
     """
@@ -76,16 +41,13 @@ def rk4_propagate(x,dt,Earth):
 
     return x + (1/6)*(k1+2*k2+2*k3+k4)
 
-
 def norm(x):
     """norm of an np.array"""
-    return math.sqrt(np.numerical.sum(x**2))
+    return sqrt(np.numerical.sum(x**2))
 
 def normalize(x):
     """normalize an np.array (not in place)"""
     return x/norm(x)
-
-
 
 def dynamics(x,Earth):
     """FODE + J2 dynamics function
@@ -110,9 +72,7 @@ def dynamics(x,Earth):
 
     return np.array([x[3],x[4],x[5],accel[0],accel[1],accel[2]])
 
-
-
-def ecef_from_eci(r_eci,earth_rotation_angle_offset,t_since_epoch):
+def ecef_from_eci(p,r_eci,earth_rotation_angle_offset,t_since_epoch):
     """ecef position from eci and earth rotation angle.
 
     Args:
@@ -142,13 +102,13 @@ def ecef_from_eci(r_eci,earth_rotation_angle_offset,t_since_epoch):
     b = t_since_epoch*5.14671e-11
 
     # here I get sin and cosine of GMST
-    sin_theta = math.sin(a)*math.cos(b) + math.cos(a)*math.sin(b)
-    cos_theta = math.cos(a)*math.cos(b) - math.sin(a)*math.sin(b)
+    sin_theta = sin(a)*cos(b) + cos(a)*sin(b)
+    cos_theta = cos(a)*cos(b) - sin(a)*sin(b)
 
     # instead of calling a RotZ function, I just do it all here
-    return np.array([cos_theta*r_eci[0] + sin_theta*r_eci[1],
-                    -sin_theta*r_eci[0] + cos_theta*r_eci[1],
-                     r_eci[2] ])
+    p.r_ecef[0] = cos_theta*r_eci[0] + sin_theta*r_eci[1]
+    p.r_ecef[1] = -sin_theta*r_eci[0] + cos_theta*r_eci[1]
+    p.r_ecef[2] = r_eci[2]
 
 
 def elevation_dot_product(r_ecef,r_station,earth):
@@ -169,42 +129,33 @@ def elevation_dot_product(r_ecef,r_station,earth):
 
 # ----------- Scheduler --------------
 
-
 class Propagator():
 
-    def __init__(self,rv_eci,earth_rotation_angle_offset,t_epoch,ground_stations):
+    # store ecef location
+    r_ecef = np.zeros(3)
+
+    # [r;v] in km, km/s
+    rv_eci =  np.zeros(6)
+    # current earth rotation angle
+    earth_rotation_angle_offset=0
+
+    # initial time that propagator was started
+    t_epoch=0
+
+    # constants
+    earth = Earth()
+
+    def __init__(self,gs,passes):
         """Initialize the propagator with the stuff we received from
         the ground station, as well as pre-allocate other parameters.
-
-        Args:
-            rv_eci: state [r (km);v (km/s)] at t_epoch
-            earth_rotation_angle_offset: GMST at t_epoch (radian)
-            t_epoch: on board satellite time when propagator is initialized (s)
         """
-
-        # [r;v] in km, km/s
-        self.rv_eci = 1*rv_eci
-
-        # current earth rotation angle
-        self.earth_rotation_angle_offset = earth_rotation_angle_offset
-
-        # initial time that propagator was started
-        self.t_epoch = t_epoch
-
-        # store ecef location
-        self.r_ecef = np.zeros(3)
-
-        # constants
-        self.earth = Earth()
+        self.ground_stations=gs
+        self.passes=passes
 
         # visible to ground station
         self.visible = False
 
-        # visible to ground station (previous step)
-        self.old_visible = False
-
-        # ground stations
-        self.ground_stations = ground_stations
+        self.gs_id=0
 
 
     def step(self,dt):
@@ -218,22 +169,11 @@ class Propagator():
             with respect to a J2-only gravity model
         """
 
-        if float(dt) > 50.0:
-            raise Exception("dt is too big (>50 seconds)")
+        # if float(dt) > 50.0:
+        #     raise Exception("dt is too big (>50 seconds)")
 
         # send dynamics forward one s
         self.rv_eci = rk4_propagate(self.rv_eci,dt,self.earth)
-
-
-    def get_r_ecef(self,t_current):
-        """Get ecef location of spacecraft.
-
-        Args:
-            t_current: on-board spacecraft time (s)
-        """
-
-        self.r_ecef = ecef_from_eci(self.rv_eci,
-                self.earth_rotation_angle_offset,t_current - self.t_epoch)
 
 
     def check_visibility(self):
@@ -242,82 +182,87 @@ class Propagator():
         Summary: sets self.visible to False, then cycles through the
         ground stations and if one of them is visible, sets self.visible
         to True.
-        """
-
-        # put the current reading back in the old reading
-        self.old_visible = self.visible
-
-        # find new reading
-        self.visible = False
         for gs in self.ground_stations:
             if (elevation_dot_product(self.r_ecef,gs,self.earth) >  0.0):
-                self.visible = True
+        """
 
-# ---------------------- Testing script --------------------------
-
-
-#----------Communication from the ground-------------------
-# communication from the ground tells us rv_eci, and earth_rotation_angle_offset
-rv_eci = np.array([-1861.7015559490976, -6645.09702340011, 0.032941584155793194,
-              -0.9555092604431692, 0.29391099680436356, 7.541418280028347])
-earth_rotation_angle_offset = 4.273677081313352
+        for gs in self.ground_stations:
+            if self.visible ^ (elevation_dot_product(self.r_ecef,self.ground_stations[gs][1],self.earth) >  0.0):
+                self.visible ^= 1
+                self.gs_id = self.ground_stations[gs][0]
+                return True
 
 
-#----------Initialize propagator---------------------------
-# the spacecraft then initializes the propagator with this information, and
-# takes note of the current time as t_epoch
-t_epoch = 0 # hard coded now, but would be current on board time at time of transmission
-t_epoch = 6856.05
-# ground station locations
-stanford_ecef = np.array([-2.7001052e3, -4.29272716e3, 3.855177275e3])
-ground_stations = [stanford_ecef]
-propagator = Propagator(rv_eci, earth_rotation_angle_offset, t_epoch, ground_stations)
+    def run(self,dt,num_steps):
+        n_passes = 0
+        max_passes=len(self.passes)-1
+        for i in range(num_steps):
+            # current time
+            t_current = dt*i + self.t_epoch
 
-# step size for integrator
-dt = 30
+            # update ecef location
+            ecef_from_eci(self,self.rv_eci,self.earth_rotation_angle_offset,t_current - self.t_epoch)
 
+            # check visibility from ground station
 
-#----------Run propagator----------------------------------
-
-# empty list (to be list of 2 element lists with start and stop times)
-passes = []
-n_passes = 0
-
-
-t1 = time.monotonic()
-for i in range(8640):
-
-    # current time
-    t_current = dt*i + t_epoch
-
-    # get ecef location
-    propagator.get_r_ecef(t_current)
-
-    # check visibility from ground station
-    propagator.check_visibility()
-
-    # integrate to the next step
-    propagator.step(dt)
-
-    if (not propagator.old_visible) and propagator.visible:
-        # if we just entered visibility, add the start time
-        passes.append([t_current,0])
-
-        # increment the number of passes by 1
-        n_passes += 1
+            if self.check_visibility():
+                if self.visible:
+                    self.passes[n_passes][0]=t_current
+                    self.passes[n_passes][2]=self.gs_id
+                else:
+                    self.passes[n_passes][1]=t_current
+                    n_passes += 1
+                    if n_passes > max_passes:
+                        break
+                    print(n_passes)
 
 
-    if propagator.old_visible and (not propagator.visible):
-        # if we just left visibility, add the stop time
-        passes[n_passes-1][1] = t_current
+            # integrate to the next step
+            self.step(dt)
 
-print("time")
-print(time.monotonic()-t1)
-#print(propagator.rv_eci)
-#print(propagator.r_ecef)
 
-print(passes)
-print(n_passes)
 
-gc.collect()
-print(gc.mem_alloc())
+    # ---------------------- Testing script --------------------------
+    '''
+
+    passes will be preallocated in state machine constructor
+    passes=[[0,0] for i in range(6)]
+
+
+    --------- Initialize propagator---------------------------
+    the spacecraft then initializes the propagator with this information, and
+    propagator = Propagator()
+
+    --------- Communication from the ground-------------------
+    communication from the ground tells us rv_eci, and earth_rotation_angle_offset
+    rv_eci = np.array([-1861.7015559490976, -6645.09702340011, 0.032941584155793194,
+                  -0.9555092604431692, 0.29391099680436356, 7.541418280028347])
+    earth_rotation_angle_offset = 4.273677081313352
+    '''
+
+    # def debug_scheduler(self,gs_msg):
+    def debug_scheduler(self,gs_msg=None):
+        if gs_msg is None:
+            print('dummy eci')
+            gs_msg = b'\xc0\x9d\x16\xced\xae\xc6\xc1\xc0\xb9\xf5\x18\xd6\x86\x8ak?\xa0\xdd\xb8%AP\x02\xbf\xee\x93\x88(\x14\x1d&?\xd2\xcfp\x11\xcdh{@\x1e*i\x8d\xb8\xb6\x9a'
+            gs_msg += b'@\x11\x18>\xce\x07\x9fP'
+
+        #---------- Update propagator---------------------------
+        '''
+            from ground station message:
+                rv_eci: state [r (km);v (km/s)] at t_epoch
+                earth_rotation_angle_offset: GMST at t_epoch (radian)
+
+            t_epoch: on board satellite time when propagator is initialized (s)
+        '''
+        for i in range(6):
+            self.rv_eci[i]=struct.unpack_from('>d',gs_msg,offset=i*8)[0]
+        self.earth_rotation_angle_offset=struct.unpack_from('>d',gs_msg,offset=-8)[0]
+        self.t_epoch=int(monotonic())
+
+        #---------- Run propagator---------------------------
+        print('starting time',self.t_epoch)
+        self.run(dt=30,num_steps=2880)
+        print('total time',(monotonic()-self.t_epoch))
+        for i in self.passes:
+            print('{},{},{}'.format(i[0],i[1],i[2]))

@@ -17,7 +17,7 @@ def mjd_from_gps(GNSS_week, TOW):
         The TOW term is scaled by 0.01 after being input to the function.
         This means the input to the function is the raw gps int.
 
-        This has be tested with <http://leapsecond.com/java/gpsclock.htm>
+        This has been tested with <http://leapsecond.com/java/gpsclock.htm>
     """
 
     # seconds since the week started (GPS is off from UTC by 18 seconds)
