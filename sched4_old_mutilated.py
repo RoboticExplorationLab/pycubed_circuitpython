@@ -1,6 +1,6 @@
 from math import sqrt,sin,cos
 import ulab as np
-from time import monotonic,sleep
+from time import monotonic
 import struct
 
 
@@ -151,6 +151,10 @@ class Propagator():
         """
         self.ground_stations=gs
         self.passes=passes
+
+        # visible to ground station
+        self.visible = False
+
         self.gs_id=0
 
 
@@ -171,6 +175,24 @@ class Propagator():
         # send dynamics forward one s
         self.rv_eci = rk4_propagate(self.rv_eci,dt,self.earth)
 
+
+    def check_visibility(self):
+        """Check if the spacecraft is visible from a ground station.
+
+        Summary: sets self.visible to False, then cycles through the
+        ground stations and if one of them is visible, sets self.visible
+        to True.
+        for gs in self.ground_stations:
+            if (elevation_dot_product(self.r_ecef,gs,self.earth) >  0.0):
+        """
+
+        for gs in self.ground_stations:
+            if self.visible ^ (elevation_dot_product(self.r_ecef,self.ground_stations[gs][1],self.earth) >  0.0):
+                self.visible ^= 1
+                self.gs_id = self.ground_stations[gs][0]
+                return True
+
+
     def run(self,dt,num_steps):
         n_passes = 0
         n_gs=range(len(self.ground_stations))
@@ -183,11 +205,9 @@ class Propagator():
             ecef_from_eci(self,self.rv_eci,self.earth_rotation_angle_offset,t_current - self.t_epoch)
             # check visibility from EACH ground station
             for gs_index in n_gs:
-                if elevation_dot_product(self.r_ecef,self.ground_stations[gs_index][1],self.earth) > 0:
-                    if not any(buff[:gs_index+1]):
+                if elevation_dot_product(self.r_ecef,self.ground_stations[gs_index][1],self.earth) >  0:
+                    if not buff[gs_index]:
                         buff[gs_index]=t_current
-                        buff[gs_index+1:]=[0 for j in buff[gs_index+1:]]
-                        break
                         # print('gs index:{}, id:{},\tbuff{}'.format(gs_index,self.ground_stations[gs_index][0],buff))
                 elif buff[gs_index]:
                     self.passes[n_passes][0]=buff[gs_index]
@@ -195,7 +215,7 @@ class Propagator():
                     self.passes[n_passes][2]=self.ground_stations[gs_index][0]
                     buff[gs_index]=0
                     n_passes += 1
-                    print('gs index:{}, id:{},\tn_passes:{}'.format(gs_index,self.ground_stations[gs_index][0],n_passes))
+                    # print('gs index:{}, id:{},\tn_passes:{}'.format(gs_index,self.ground_stations[gs_index][0],n_passes))
                     if n_passes > max_passes:
                         break
             if n_passes >= max_passes:
@@ -223,6 +243,7 @@ class Propagator():
     earth_rotation_angle_offset = 4.273677081313352
     '''
 
+    # def debug_scheduler(self,gs_msg):
     def debug_scheduler(self,gs_msg=None):
         if gs_msg is None:
             print('dummy eci')
@@ -243,9 +264,8 @@ class Propagator():
         self.t_epoch=int(monotonic())
 
         #---------- Run propagator---------------------------
-        print('\tstarting time',self.t_epoch)
+        print('starting time',self.t_epoch)
         self.run(dt=30,num_steps=2880)
-        print('\ttotal time',(monotonic()-self.t_epoch))
-        print('------------------------------')
+        print('total time',(monotonic()-self.t_epoch))
         for i in self.passes:
             print('{},{},{}'.format(i[0],i[1],i[2]))

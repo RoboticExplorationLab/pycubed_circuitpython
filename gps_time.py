@@ -54,7 +54,7 @@ def earth_rotation_angle_gps(MJD_int,MJD_float):
 
     Returns:
         Era: Earth rotational angle (radians)
-        
+
     Comments:
         Information on the ERA from MJD can be found here:
         <https://www.aanda.org/articles/aa/pdf/2006/45/aa5897-06.pdf>
@@ -103,10 +103,10 @@ def rveci_from_ecef(r_ecef,v_ecef,era):
 
 # ----------------RAW GPS INFO--------------------
 # weeks from midnight january 6th 1980
-GNSS_week = 2131
+GNSS_week = 2132
 
 # seconds since the week started (raw gps int)
-TOW = 19047200
+TOW = 51638601
 
 # ecef position and velocity
 r_ecef = (-7384816,-655378593, 149326468)
